@@ -20,36 +20,7 @@ distinct_colors = ['#e6194b', '#3cb44b', '#ffe119', '#0082c8', '#f58231', '#911e
                    '#ffd8b1', '#e6beff', '#808080', '#FFFFFF']
 label_color_map = {k: distinct_colors[i] for i, k in enumerate(label_map.keys())}
 
-
-def parse_annotation(annotation_path):
-    tree = ET.parse(annotation_path)
-    root = tree.getroot()
-
-    boxes = list()
-    labels = list()
-    difficulties = list()
-    for object in root.iter('object'):
-
-        difficult = int(object.find('difficult').text == '1')
-
-        label = object.find('name').text.lower().strip()
-        if label not in label_map:
-            continue
-
-        bbox = object.find('bndbox')
-        xmin = int(bbox.find('xmin').text) - 1
-        ymin = int(bbox.find('ymin').text) - 1
-        xmax = int(bbox.find('xmax').text) - 1
-        ymax = int(bbox.find('ymax').text) - 1
-
-        boxes.append([xmin, ymin, xmax, ymax])
-        labels.append(label_map[label])
-        difficulties.append(difficult)
-
-    return {'boxes': boxes, 'labels': labels, 'difficulties': difficulties}
-
-
-def create_data_lists(voc07_path, voc12_path, test_path, output_folder):
+def create_data_lists(CUB_200_2011_path, output_folder):
     """
     Create lists of images, the bounding boxes and labels of the objects in these images, and save these to file.
 
@@ -57,30 +28,66 @@ def create_data_lists(voc07_path, voc12_path, test_path, output_folder):
     :param voc12_path: path to the 'VOC2012' folder
     :param output_folder: folder where the JSONs must be saved
     """
-    voc07_path = os.path.abspath(voc07_path)
-    voc12_path = os.path.abspath(voc12_path)
+    path = os.path.abspath(CUB_200_2011_path)    
 
     train_images = list()
+    test_images = list()
     train_objects = list()
+    test_objects = list()
     n_objects = 0
 
-    # Training data
-    for path in [voc07_path, voc12_path]:
+    # Find IDs of images in training data
+    with open(os.path.join(path, 'train_test_split.txt')) as f:
+        train_test_split = f.read().splitlines() # image id, test/train (bool)
+        train_test_split = [y.split(' ') for y in ids]
+    
+    # Find path to images
+    with open(os.path.join(path, 'images.txt')) as f:
+        images_location = f.read().splitlines() # image id, image location
+        images_location = [y.split(' ') for y in ids]
+    # Find the box, labels, features
 
-        # Find IDs of images in training data
-        with open(os.path.join(path, 'ImageSets/Main/trainval.txt')) as f:
-            ids = f.read().splitlines()
+    # Read the labels and bounding boxes        
+    with open(os.path.join(path, 'classes.txt')) as f:
+        bird_types = f.read().splitlines() # class_index, folder.bird_types            
 
-        for id in ids:
-            # Parse annotation's XML file
-            objects = parse_annotation(os.path.join(path, 'Annotations', id + '.xml'))
-            if len(objects) == 0:
-                continue
-            n_objects += len(objects)
-            train_objects.append(objects)
-            train_images.append(os.path.join(path, 'JPEGImages', id + '.jpg'))
+    with open(os.path.join(path, 'image_class_labels.txt')) as f:
+        image_to_bird_types = f.read().splitlines() # image id, class_index
 
+    label_map = {} # Relates a numeric to the type of bird
+    for class_indx, bird_type in bird_types:
+        label_map[class_indx] = bird_type.split('.')[1] # Remove the folder 
+
+    
+    r = lambda: random.randint(0,255)
+    print('#%02X%02X%02X' % (r(),r(),r()))
+
+    with open(os.path.join(path,'bounding_boxes.txt')) as f:
+        bounding_boxes = f.read().splitlines()
+        bounding_boxes = [y.split(' ') for y in ids] # image id, box
+
+    with open(os.path.join(path,'parts','parts.txt')) as f:
+        parts = f.read().splitlines() # part id, part name
+    
+    with open(os.path.join(path,'parts','part_locs.txt')) as f:
+        part_loc = f.read().splitlines() # image_id, part_id, part name
+
+
+    for bird_id,image_loc in images_location: # loop through each image 
+        id = int(bird_id)-1
+        class_indx = image_to_bird_types[id][1]
+        # bird_type = bird_types[class_indx]
+        bounding_box = bounding_boxes[id]
+        
+        if bool(train_test_split[id][1]):
+            train_images.append(image_loc)
+            train_objects.append({'labels':class_indx,"boxes":bounding_boxes})
+        else:
+            test_images.append(image_loc)
+            test_objects.append({'labels':bird_type,"boxes":bounding_boxes})
+            
     assert len(train_objects) == len(train_images)
+    assert len(test_objects) == len(test_images)
 
     # Save to file
     with open(os.path.join(output_folder, 'TRAIN_images.json'), 'w') as j:
