@@ -16,12 +16,13 @@ keep_difficult = True  # use objects considered difficult to detect?
 # Not too many here since the SSD300 has a very specific structure
 n_classes = len(label_map)  # number of different types of objects
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu")
 
 # Learning parameters
 checkpoint = './checkpoint_ssd300.pth.tar'  # path to model checkpoint, None if none
 batch_size = 16  # batch size
 iterations = 120000  # number of iterations to train
-workers = 8  # number of workers for loading data in the DataLoader
+workers = 1  # number of workers for loading data in the DataLoader
 print_freq = 200  # print training status every __ batches
 lr = 1e-3  # learning rate
 decay_lr_at = [80000, 100000]  # decay learning rate after these many iterations
@@ -40,7 +41,7 @@ def main():
     global start_epoch, label_map, epoch, checkpoint, decay_lr_at
 
     # Initialize model or load checkpoint
-    if checkpoint is None:
+    if not os.path.exists(checkpoint):
         start_epoch = 0
         model = SSD300(n_classes=n_classes)
         # Initialize the optimizer, with twice the default learning rate for biases, as in the original Caffe repo
@@ -63,7 +64,7 @@ def main():
         optimizer = checkpoint['optimizer']
 
     # Move to default device
-    model = model.to(device)
+    #model = model.to(device)
     criterion = MultiBoxLoss(priors_cxcy=model.priors_cxcy).to(device)
 
     # Custom dataloaders
